@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #faf8f3;
+  --ink: #202020;
+  --brown: #6b4f3a;
+  --orange: #e67e22;
+  --green: #395144;
+  --cream-card: #fff8ee;
+  --line: rgba(107, 79, 58, 0.14);
+}
+
+@theme {
+  --color-bg: #faf8f3;
+  --color-ink: #202020;
+  --color-brown: #6b4f3a;
+  --color-orange: #e67e22;
+  --color-green: #395144;
+  --color-cream: #fff8ee;
+  --font-display: var(--font-playfair);
+  --font-body: var(--font-inter);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+}
+
+::selection {
+  background: rgba(230, 126, 34, 0.24);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(107, 79, 58, 0.32);
+}
+
+.shell {
+  width: min(100% - 32px, 1240px);
+  margin-inline: auto;
+}
+
+.btn-primary {
+  border-radius: 4px;
+  background: var(--orange);
+  color: white;
+  transition: transform 150ms ease, background 200ms ease;
+}
+
+.btn-primary:hover {
+  background: #d16f16;
+}
+
+.btn-primary:active {
+  transform: scale(0.97);
+}
+
+.btn-ghost {
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  color: currentColor;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.image-fallback {
+  background: linear-gradient(135deg, #efe6d8, #e3d3bc);
+}
+
+.price-pill {
+  border-radius: 999px;
+  background: var(--orange);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 8px 10px;
+  box-shadow: 0 8px 18px rgba(230, 126, 34, 0.22);
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(20, 18, 16, 0.46);
+}
+
+.drawer-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 90;
+  display: flex;
+  height: 100dvh;
+  width: min(520px, 100%);
+  flex-direction: column;
+  background: var(--cream-card);
+  box-shadow: -24px 0 70px -28px rgba(0, 0, 0, 0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

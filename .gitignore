@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+dist
+.env
+*.log
+tsconfig.tsbuildinfo
+
+# Local planning / handoff notes not needed in production repo
+masterprompt
+PROJECT_STRUCTURE.md
+REQUIREMENTS_CHECKLIST.md
+PDF_REQUIREMENTS_ANALYSIS.md

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { MessageCircle, Send, X } from "lucide-react";
+import { Mic, MessageCircle, Send, Square, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type ChatMessage = {
@@ -10,8 +10,20 @@ type ChatMessage = {
   text: string;
 };
 
-const LEARNING_REPLY =
-  "I'm currently learning! Full AI ordering assistance coming soon. For now, please use the menu to customize and add items to your cart.";
+type AssistantApiResponse = {
+  sessionId?: string;
+  reply?: string;
+  transcript?: string;
+  normalizedTranscript?: string;
+  audioUrl?: string;
+  audioBase64?: string;
+  audioMimeType?: string;
+  error?: string;
+};
+
+const SESSION_STORAGE_KEY = "hot-bagels-brain-session-id";
+const GENERIC_ERROR_REPLY =
+  "I could not reach the ordering brain right now. Please make sure the local backend is running and try again.";
 
 function createMessageId() {
   return crypto.randomUUID();
@@ -21,6 +33,8 @@ export function AIAssistant() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "assistant-welcome",
@@ -31,8 +45,9 @@ export function AIAssistant() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
-  const pendingRepliesRef = useRef(0);
-  const replyTimersRef = useRef<number[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -43,33 +58,164 @@ export function AIAssistant() {
   }, [messages, assistantTyping, open]);
 
   useEffect(() => {
+    setSessionId(window.sessionStorage.getItem(SESSION_STORAGE_KEY));
+  }, []);
+
+  useEffect(() => {
     return () => {
-      replyTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      replyTimersRef.current = [];
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
-  const submit = (event: FormEvent) => {
+  const playAssistantAudio = (data: AssistantApiResponse) => {
+    if (data.audioUrl) {
+      void new Audio(data.audioUrl).play().catch(() => undefined);
+      return;
+    }
+
+    if (data.audioBase64) {
+      const mimeType = data.audioMimeType ?? "audio/wav";
+      void new Audio(`data:${mimeType};base64,${data.audioBase64}`).play().catch(() => undefined);
+    }
+  };
+
+  const applyAssistantResponse = (data: AssistantApiResponse, voiceMessageId?: string) => {
+    if (data.sessionId) {
+      setSessionId(data.sessionId);
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, data.sessionId);
+    }
+
+    const displayedTranscript = data.normalizedTranscript ?? data.transcript;
+    if (voiceMessageId && displayedTranscript) {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === voiceMessageId ? { ...message, text: displayedTranscript ?? message.text } : message
+        )
+      );
+    }
+
+    setMessages((current) => [
+      ...current,
+      { id: createMessageId(), role: "assistant", text: data.reply ?? GENERIC_ERROR_REPLY }
+    ]);
+    playAssistantAudio(data);
+  };
+
+  const sendTextMessage = async (message: string) => {
+    const response = await fetch("/api/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, sessionId })
+    });
+
+    return (await response.json()) as AssistantApiResponse;
+  };
+
+  const sendVoiceMessage = async (audio: Blob, voiceMessageId: string) => {
+    const formData = new FormData();
+    formData.append("audio", audio, "customer-order.webm");
+    if (sessionId) {
+      formData.append("sessionId", sessionId);
+    }
+
+    const response = await fetch("/api/assistant/voice", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = (await response.json()) as AssistantApiResponse;
+    applyAssistantResponse(data, voiceMessageId);
+  };
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     const message = input.trim();
-    if (!message) return;
+    if (!message || assistantTyping || recording) return;
 
     setInput("");
     setMessages((current) => [...current, { id: createMessageId(), role: "user", text: message }]);
     setAssistantTyping(true);
-    pendingRepliesRef.current += 1;
 
-    const timer = window.setTimeout(() => {
+    try {
+      applyAssistantResponse(await sendTextMessage(message));
+    } catch {
       setMessages((current) => [
         ...current,
-        { id: createMessageId(), role: "assistant", text: LEARNING_REPLY }
+        { id: createMessageId(), role: "assistant", text: GENERIC_ERROR_REPLY }
       ]);
-      pendingRepliesRef.current = Math.max(0, pendingRepliesRef.current - 1);
-      setAssistantTyping(pendingRepliesRef.current > 0);
-      replyTimersRef.current = replyTimersRef.current.filter((storedTimer) => storedTimer !== timer);
-    }, 650);
+    } finally {
+      setAssistantTyping(false);
+    }
+  };
 
-    replyTimersRef.current.push(timer);
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    setRecording(false);
+  };
+
+  const startRecording = async () => {
+    if (assistantTyping || recording) return;
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMessages((current) => [
+        ...current,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          text: "Voice input is not available in this browser. Please type your order."
+        }
+      ]);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audio = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const voiceMessageId = createMessageId();
+
+        setMessages((current) => [
+          ...current,
+          { id: voiceMessageId, role: "user", text: "Voice message received..." }
+        ]);
+        setAssistantTyping(true);
+
+        void sendVoiceMessage(audio, voiceMessageId)
+          .catch(() => {
+            setMessages((current) => [
+              ...current,
+              { id: createMessageId(), role: "assistant", text: GENERIC_ERROR_REPLY }
+            ]);
+          })
+          .finally(() => setAssistantTyping(false));
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setMessages((current) => [
+        ...current,
+        {
+          id: createMessageId(),
+          role: "assistant",
+          text: "I could not access the microphone. Please allow microphone permission and try again."
+        }
+      ]);
+    }
   };
 
   return (
@@ -136,10 +282,34 @@ export function AIAssistant() {
               ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="Type your message..."
+              disabled={assistantTyping || recording}
+              placeholder={
+                recording
+                  ? "Listening..."
+                  : assistantTyping
+                    ? "Waiting for the ordering brain..."
+                    : "Type your message..."
+              }
               className="min-w-0 flex-1 rounded-md border border-[var(--line)] px-4 py-3 text-sm outline-none focus:border-orange"
             />
-            <button className="btn-primary grid h-12 w-12 place-items-center" aria-label="Send message">
+            <button
+              type="button"
+              className={`grid h-12 w-12 shrink-0 place-items-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                recording
+                  ? "border-orange bg-orange text-white"
+                  : "border-[var(--line)] bg-white text-brown hover:border-orange hover:text-orange"
+              }`}
+              aria-label={recording ? "Stop voice recording" : "Start voice recording"}
+              onClick={recording ? stopRecording : startRecording}
+              disabled={assistantTyping}
+            >
+              {recording ? <Square size={17} /> : <Mic size={18} />}
+            </button>
+            <button
+              className="btn-primary grid h-12 w-12 place-items-center disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label="Send message"
+              disabled={assistantTyping || recording || !input.trim()}
+            >
               <Send size={18} />
             </button>
           </form>

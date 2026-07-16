@@ -66,16 +66,22 @@ If this folder itself is the repository root, leave Vercel root directory as def
 
 ## Environment Variables
 
-No environment variables are required for the frontend demo.
-
-Future Gohlem.ai integration:
+For local AI ordering brain integration:
 
 ```bash
-GOHLEM_API_URL=
-GOHLEM_API_KEY=
+HOT_BAGELS_BRAIN_URL=http://127.0.0.1:8000
+HOT_BAGELS_BRAIN_TIMEOUT_MS=180000
 ```
 
-Only add these in Vercel when real backend credentials are available.
+Run the Python backend separately:
+
+```bash
+cd ../BackendWorking/hot-bagels-brain
+.\.venv\Scripts\activate
+uvicorn api.main:app --reload --port 8000
+```
+
+The floating assistant calls the Next.js `/api/assistant` route, which proxies to the Python backend `/api/chat`.
 
 ## Repository Hygiene
 
